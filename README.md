@@ -8,7 +8,7 @@
 - Install [SBT](http://www.scala-sbt.org/download.html)
 
 ##### Get the repository
-First of all, either clone the repository via git
+Clone the repository via git
 
 ```sh
 $ git clone https://github.com/tst-applicant-excercise/dcrick.git
