@@ -22,7 +22,9 @@ Go into the project's root directory, run `sbt run`
 $ sbt run
 ```
 
-`
+#### Expected output
+
+```
 PROBLEM 1
 =========
 BEST GROUP PRICES
@@ -38,4 +40,4 @@ List(PromotionCombo(Vector(P1, P5, P4)), PromotionCombo(Vector(P1, P2)))
 
 COMBINABLE PROMOTIONS FOR P3
 List(PromotionCombo(Vector(P3, P5, P4)), PromotionCombo(Vector(P3, P2)))
-`
+```
