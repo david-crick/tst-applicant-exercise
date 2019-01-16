@@ -11,42 +11,42 @@ object PriceTool {
      */
     def getBestGroupPrices(rates: Seq[Rate], prices: Seq[CabinPrice]) : Seq[BestGroupPrice] = {
 
-        //
-        //  create a map for looking up rate group by rate code
-        //
+        def buildLookupRateGroupFunction(rates: Seq[Rate]) : (String) => String = {
 
-        val rateGroupMap = Map[String,String]()
-        for (rate <- rates) {
-            rateGroupMap += rate.rateCode -> rate.rateGroup
+            def addRatesToRateGroupMap(rates: Seq[Rate], map: Map[String,String]) : Map[String,String] = {
+                if (rates.isEmpty) map else addRatesToRateGroupMap(rates.tail, map + (rates.head.rateCode -> rates.head.rateGroup))
+            }
+
+            def buildRateGroupMap(rates: Seq[Rate]) : Map[String,String] = {
+               addRatesToRateGroupMap(rates, Map[String,String]())
+            }
+
+            (rateCode: String) => buildRateGroupMap(rates)(rateCode)
         }
 
-        //
-        //  create a map from cabin code to a map from rate code to best cabin price
-        //
-
-        val cabinGroupBestPriceMap = Map[String,Map[String,CabinPrice]]()
-        for (price <- prices) {
-            val rateGroup = rateGroupMap(price.rateCode)
-            cabinGroupBestPriceMap get price.cabinCode match {
+        def addPriceToMap(price: CabinPrice, rateGroup: String, map: Map[String,Map[String,BestGroupPrice]]) : Map[String,Map[String,BestGroupPrice]] = {
+            map get price.cabinCode match {
                 case None => {
-                    cabinGroupBestPriceMap += price.cabinCode -> Map[String,CabinPrice](rateGroup -> price)
+                    map + (price.cabinCode -> Map[String,BestGroupPrice](rateGroup -> BestGroupPrice(price.cabinCode, price.rateCode, price.price, rateGroup)))
                 }
                 case Some(groupBestPriceMap) => {
-                    val currentBestPrice = groupBestPriceMap get rateGroup
-                    if (currentBestPrice.isEmpty || currentBestPrice.get.price > price.price) {
-                        groupBestPriceMap += rateGroup -> price
+                    groupBestPriceMap get rateGroup match {
+                        case None => {
+                            map + (price.cabinCode -> (groupBestPriceMap + (rateGroup -> BestGroupPrice(price.cabinCode, price.rateCode, price.price, rateGroup))))
+                        }
+                        case Some(currentBestPrice) => {
+                            if (currentBestPrice.price > price.price) map + (price.cabinCode -> (groupBestPriceMap + (rateGroup -> BestGroupPrice(price.cabinCode, price.rateCode, price.price, rateGroup)))) else map
+                        }
                     }
                 }
             }
         }
 
-        //
-        //  return sequence of best group prices
-        //
+        def addPricesToMap(prices: Seq[CabinPrice], map: Map[String,Map[String,BestGroupPrice]], lookupRateGroup: (String) => String) : Map[String,Map[String,BestGroupPrice]] = {
+            if (prices.isEmpty) map else addPricesToMap(prices.tail, addPriceToMap(prices.head, lookupRateGroup(prices.head.rateCode), map), lookupRateGroup)
+        }
 
-        var seq : Seq[BestGroupPrice] = Seq[BestGroupPrice]()
-        cabinGroupBestPriceMap.foreach{ case (cabinCode, groupBestPriceMap) => groupBestPriceMap.foreach{ case (rateGroup, bestPrice) => seq = seq :+ BestGroupPrice(cabinCode, bestPrice.rateCode, bestPrice.price, rateGroup) }}
-        return seq
+        addPricesToMap(prices, Map[String,Map[String,BestGroupPrice]](), buildLookupRateGroupFunction(rates)).mapValues(x=>x.valuesIterator.toList).valuesIterator.toList.flatten   
     }
 
     /** builds map from promotion code to set of promotion codes that are not combinable with the promotion
