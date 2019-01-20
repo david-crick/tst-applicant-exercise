@@ -17,11 +17,7 @@ object PriceTool {
                 if (rates.isEmpty) map else addRatesToRateGroupMap(rates.tail, map + (rates.head.rateCode -> rates.head.rateGroup))
             }
 
-            def buildRateGroupMap(rates: Seq[Rate]) : Map[String,String] = {
-               addRatesToRateGroupMap(rates, Map[String,String]())
-            }
-
-            (rateCode: String) => buildRateGroupMap(rates)(rateCode)
+            (rateCode: String) => addRatesToRateGroupMap(rates, Map[String,String]())(rateCode)
         }
 
         def addPriceToMap(price: CabinPrice, rateGroup: String, map: Map[String,Map[String,BestGroupPrice]]) : Map[String,Map[String,BestGroupPrice]] = {
@@ -49,11 +45,11 @@ object PriceTool {
         addPricesToMap(prices, Map[String,Map[String,BestGroupPrice]](), buildLookupRateGroupFunction(rates)).mapValues(x=>x.valuesIterator.toList).valuesIterator.toList.flatten   
     }
 
-    private def buildCombinations(allPromotions: Seq[Promotion]) : Set[Set[String]] = {
+    private def buildCombinations(allPromotions: Seq[Promotion]) : Seq[PromotionCombo] = {
         buildCombinations(allPromotions, Set[String]())
     }
 
-    private def buildCombinations(allPromotions: Seq[Promotion], promotionsToInclude: Set[String]) : Set[Set[String]] = {
+    private def buildCombinations(allPromotions: Seq[Promotion], promotionsToInclude: Set[String]) : Seq[PromotionCombo] = {
 
         def buildLookupPromotionRestrictionsFunction(allPromotions: Seq[Promotion]) : (String) => Set[String] = {
 
@@ -61,88 +57,110 @@ object PriceTool {
                 if (promotions.isEmpty) map else addPromotionsToPromotionRestrictionsMap(promotions.tail, map + (promotions.head.code -> promotions.head.notCombinableWith.toSet))
             }
 
-            def buildPromotionRestrictionsMap(allPromotions: Seq[Promotion]) : Map[String,Set[String]] = {
-               addPromotionsToPromotionRestrictionsMap(allPromotions, Map[String,Set[String]]())
-            }
-
-            (promotionCode: String) => buildPromotionRestrictionsMap(allPromotions)(promotionCode)
+            (promotionCode: String) => addPromotionsToPromotionRestrictionsMap(allPromotions, Map[String,Set[String]]())(promotionCode)
         }
 
-        def iterateCombinations(
-            promotions: Set[String],
-            restrictions: Set[String],
-            remainingPromotions: Seq[String],
-            allPromotions: Set[String],
+        def buildPromotionSets(
+            allPromotions: Seq[Promotion],
+            promotionsToInclude: Set[String],
             lookupPromotionRestrictions: (String) => Set[String]
         ): Set[Set[String]] = {
 
-            def combine(
+            def iterateCombinations(
                 promotions: Set[String],
                 restrictions: Set[String],
-                promotion: String,
-                promotionRestrictions: Set[String],
                 remainingPromotions: Seq[String],
                 allPromotions: Set[String],
                 lookupPromotionRestrictions: (String) => Set[String]
             ): Set[Set[String]] = {
 
-                if ((promotions & promotionRestrictions).isEmpty)
+                def maximumSetFilter(
+                    promotions: Set[String],
+                    restrictions: Set[String],
+                    allPromotions: Set[String]
+                ): Set[Set[String]] = {
 
+                    if (((allPromotions -- promotions) -- restrictions).isEmpty)
+
+                        Set[Set[String]](promotions)
+
+                    else
+
+                        Set[Set[String]]()
+                }
+
+                def combine(
+                    promotions: Set[String],
+                    restrictions: Set[String],
+                    promotion: String,
+                    promotionRestrictions: Set[String],
+                    remainingPromotions: Seq[String],
+                    allPromotions: Set[String],
+                    lookupPromotionRestrictions: (String) => Set[String]
+                ): Set[Set[String]] = {
+
+                    if ((promotions & promotionRestrictions).isEmpty)
+
+                        iterateCombinations(
+                            promotions + promotion,
+                            restrictions ++ promotionRestrictions,
+                            remainingPromotions,
+                            allPromotions,
+                            lookupPromotionRestrictions
+                        )
+
+                    else
+
+                        maximumSetFilter(
+                            promotions,
+                            restrictions,
+                            allPromotions
+                        )
+
+                }
+
+                if (remainingPromotions.isEmpty)
+
+                    maximumSetFilter(
+                        promotions,
+                        restrictions,
+                        allPromotions
+                    )
+
+                else
+
+                    combine(
+                        promotions,
+                        restrictions,
+                        remainingPromotions.head,
+                        lookupPromotionRestrictions(remainingPromotions.head),
+                        remainingPromotions.tail,
+                        allPromotions,
+                        lookupPromotionRestrictions
+                    ) ++
                     iterateCombinations(
-                        promotions + promotion,
-                        restrictions ++ promotionRestrictions,
-                        remainingPromotions,
+                        promotions,
+                        restrictions,
+                        remainingPromotions.tail,
                         allPromotions,
                         lookupPromotionRestrictions
                     )
-
-                else if (((allPromotions -- promotions) -- restrictions).isEmpty)
-
-                    Set[Set[String]](promotions)
-
-                else
-
-                    Set[Set[String]]()
             }
 
-            if (remainingPromotions.isEmpty) {
-
-                if (((allPromotions -- promotions) -- restrictions).isEmpty)
-
-                    Set[Set[String]](promotions)
-
-                else
-
-                    Set[Set[String]]()
-            }
-            else
-                combine(
-                    promotions,
-                    restrictions,
-                    remainingPromotions.head,
-                    lookupPromotionRestrictions(remainingPromotions.head),
-                    remainingPromotions.tail,
-                    allPromotions,
-                    lookupPromotionRestrictions
-                ) ++
-                iterateCombinations(
-                    promotions,
-                    restrictions,
-                    remainingPromotions.tail,
-                    allPromotions,
-                    lookupPromotionRestrictions
-                )
+            iterateCombinations(
+                promotionsToInclude,
+                promotionsToInclude.map(promotion => lookupPromotionRestrictions(promotion)).flatten,
+                allPromotions.map(promotion=>promotion.code).filterNot(promotionsToInclude contains _),
+                allPromotions.map(promotion=>promotion.code).toSet,
+                lookupPromotionRestrictions
+            )
         }
 
-        val lookupPromotionRestrictions = buildLookupPromotionRestrictionsFunction(allPromotions)
-
-        iterateCombinations(
+        buildPromotionSets(
+            allPromotions,
             promotionsToInclude,
-            promotionsToInclude.map(promotion => lookupPromotionRestrictions(promotion)).flatten,
-            allPromotions.map(promotion=>promotion.code).filterNot(promotionsToInclude contains _),
-            allPromotions.map(promotion=>promotion.code).toSet,
-            lookupPromotionRestrictions
-        )
+            buildLookupPromotionRestrictionsFunction(allPromotions)
+       ).toSeq.map(s => PromotionCombo(s.toSeq))
     }
 
     /** finds all promotion combinations with maximum number of combinable promotions in each
@@ -152,7 +170,7 @@ object PriceTool {
      */
     def allCombinablePromotions(allPromotions: Seq[Promotion]): Seq[PromotionCombo] = {
 
-        buildCombinations(allPromotions).toSeq.map(s => PromotionCombo(s.toSeq))
+        buildCombinations(allPromotions)
     }
 
     /** finds all promotion combinations for a given promotion
@@ -163,7 +181,6 @@ object PriceTool {
      */
     def combinablePromotions(promotionCode: String, allPromotions: Seq[Promotion]) : Seq[PromotionCombo] = {
 
-        buildCombinations(allPromotions, Set[String](promotionCode)).toSeq.map(s => PromotionCombo(s.toSeq))
+        buildCombinations(allPromotions, Set[String](promotionCode))
     }
-
 }
